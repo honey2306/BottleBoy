@@ -58,6 +58,13 @@ public:
     Sensor* getSensor(const String& name);
 
     /**
+     * @brief 根据索引获取传感器
+     * @param index 传感器索引（0到getSensorCount()-1）
+     * @return 传感器指针，索引越界返回 nullptr
+     */
+    Sensor* getSensor(size_t index);
+
+    /**
      * @brief 获取传感器数量
      * @return 传感器数量
      */

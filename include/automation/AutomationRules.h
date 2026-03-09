@@ -1,18 +1,13 @@
 /**
  * @file AutomationRules.h
- * @brief 自动化规则管理 - 处理传感器和执行器之间的联动逻辑
+ * @brief 自动化规则管理 - 统一管理传感器事件驱动的联动规则
  * 
- * 这个模块负责：
- * 1. 定义传感器和执行器的联动规则
- * 2. 根据传感器数据自动控制执行器
- * 3. 实现各种自动化场景
+ * 职责：
+ * 1. 通过 registerCallbacks() 绑定所有传感器的事件回调
+ * 2. 在回调中实现传感器 → 执行器的联动逻辑
  * 
- * 使用场景：
- * - 人体感应 → 开灯
- * - 温度过高 → 开风扇
- * - 光线暗 → 开灯
- * - 湿度低 → 开加湿器
- * 等等...
+ * 扩展方式：
+ * - 新增规则：在 registerCallbacks() 里绑定新传感器回调，实现对应的私有处理函数
  */
 
 #ifndef AUTOMATION_RULES_H
@@ -20,10 +15,13 @@
 
 #include "sensors/base/SensorManager.h"
 #include "actuators/base/ActuatorManager.h"
+#include "actuators/impl/DualColorLED.h"
+#include "sensors/impl/PIRSensor.h"
+#include "sensors/impl/LightSensor.h"
 
 /**
  * @class AutomationRules
- * @brief 自动化规则管理器
+ * @brief 自动化规则管理器 - 事件驱动模式
  */
 class AutomationRules {
 public:
@@ -35,47 +33,48 @@ public:
     AutomationRules(SensorManager& sensorManager, ActuatorManager& actuatorManager);
 
     /**
-     * @brief 处理所有自动化规则
+     * @brief 注册所有传感器事件回调
      * 
-     * 在主循环中定期调用，检查所有规则并执行相应动作
-     * 建议调用频率：每秒1-10次
+     * 在设备初始化完成后调用，将规则逻辑绑定到传感器状态变化事件。
+     * 每条规则对应一个或多个传感器的 onValueChanged 回调。
      */
-    void process();
+    void registerCallbacks();
+
+    /**
+     * @brief 主循环更新
+     * 
+     * 在 loop() 每帧调用。处理事件回调无法覆盖的「持续状态」规则：
+     * - 夜间 + 人一直在场 + LED 处于自动模式 → 持续重置倒计时
+     */
+    void update();
 
 private:
     SensorManager& _sensorManager;       ///< 传感器管理器引用
     ActuatorManager& _actuatorManager;   ///< 执行器管理器引用
 
-    // ========== 具体规则实现 ==========
-    
-    /**
-     * @brief 规则1: 人体感应自动开灯
-     * 
-     * 逻辑：
-     * - 检测到人 → LED开到最亮
-     * - 未检测到人 → LED关闭
-     */
-    void rulePIRToLED();
+    // ========== 缓存的设备指针（registerCallbacks 时赋值）==========
+    PIRSensor*    _pirSensor    = nullptr;  ///< PIR 传感器
+    LightSensor*  _lightSensor  = nullptr;  ///< 光敏传感器
+    DualColorLED* _ledActuator  = nullptr;  ///< 双色 LED 执行器
+
+
+
+    // ========== 规则回调处理函数 ==========
 
     /**
-     * @brief 规则2: 温度控制风扇（示例）
-     * 
-     * 逻辑：
-     * - 温度 > 30°C → 打开风扇
-     * - 温度 < 25°C → 关闭风扇
+     * @brief 规则1: PIR 状态变化 → 夜间联动 LED
      */
-    void ruleTemperatureToFan();
+    void onPIRChanged(Sensor* sensor, float newValue, float oldValue);
+
+    // ========== 持续状态规则处理函数 ==========
 
     /**
-     * @brief 规则3: 光线传感器自动开灯（示例）
-     * 
-     * 逻辑：
-     * - 光线 < 300 → 开灯
-     * - 光线 > 500 → 关灯
+     * @brief 夜间有人持续时，重置 LED 倒计时
      */
-    void ruleLightToLED();
+    void updateNightLED();
 
-    // TODO: 在这里添加更多规则...
+    // TODO: 新增规则在此处添加对应的私有处理函数
+    // void onTemperatureChanged(Sensor* sensor, float newValue, float oldValue);
 };
 
 #endif // AUTOMATION_RULES_H

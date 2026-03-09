@@ -42,6 +42,14 @@ public:
     virtual bool begin() = 0;
 
     /**
+     * @brief 主循环更新（可选重写）
+     * 
+     * 在 loop() 每帧调用，用于处理定时逻辑（如自动关灯倒计时）。
+     * 默认空实现，子类按需重写。
+     */
+    virtual void update() {}
+
+    /**
      * @brief 设置执行器状态（纯虚函数，子类必须实现）
      * @param value 控制值（具体含义由子类定义）
      * @return true 设置成功，false 失败

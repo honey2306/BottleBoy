@@ -10,6 +10,8 @@
 
 #include "network/WebServer.h"
 #include "web/WebPages.h"
+#include "sensors/impl/LightSensor.h"
+#include "sensors/impl/PIRSensor.h"
 
 /**
  * @brief 构造函数
@@ -168,8 +170,7 @@ void WebServerManager::onWebSocketEvent(AsyncWebSocket* server, AsyncWebSocketCl
     switch (type) {
         // ===== 客户端连接事件 =====
         case WS_EVT_CONNECT:
-            // 当网页连接到WebSocket时，立即发送一次传感器数据
-            client->text(getSensorDataJSON());
+            client->text(getAllDataJSON());
             break;
             
         // ===== 客户端断开事件 =====
@@ -179,8 +180,32 @@ void WebServerManager::onWebSocketEvent(AsyncWebSocket* server, AsyncWebSocketCl
             
         // ===== 收到数据事件 =====
         case WS_EVT_DATA:
-            // 目前不处理客户端发来的数据
-            // 如果需要双向通信，可以在这里添加处理逻辑
+            {
+                AwsFrameInfo* info = (AwsFrameInfo*)arg;
+                if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
+                    // 解析JSON命令
+                    JsonDocument doc;
+                    DeserializationError error = deserializeJson(doc, (const char*)data, len);
+                    
+                    if (!error && doc.containsKey("cmd")) {
+                        String cmd = doc["cmd"].as<String>();
+                        
+                        if (cmd == "control" && doc.containsKey("name")) {
+                            String name = doc["name"].as<String>();
+                            Actuator* actuator = _actuatorManager.getActuator(name);
+                            
+                            if (actuator) {
+                                JsonObject obj = doc.as<JsonObject>();
+                                actuator->setFromJSON(obj);
+                                broadcastData();
+                            }
+                        }
+                        else if (cmd == "getData") {
+                            client->text(getAllDataJSON());
+                        }
+                    }
+                }
+            }
             break;
             
         // ===== PONG事件 =====
@@ -295,11 +320,34 @@ String WebServerManager::getActuatorDataJSON() {
 String WebServerManager::getAllDataJSON() {
     JsonDocument doc;
     JsonObject root = doc.to<JsonObject>();
-    
+
     root["timestamp"] = millis();
+    root["uptime"]    = millis() / 1000;
+    root["freeHeap"]  = ESP.getFreeHeap();
+    root["chipModel"] = ESP.getChipModel();
+    root["cpuFreq"]   = ESP.getCpuFreqMHz();
+
     _sensorManager.getAllJSON(root);
     _actuatorManager.getAllJSON(root);
-    
+
+    // 自动化规则状态（使用语义接口，不依赖原始 getValue()）
+    LightSensor* lightSensor = static_cast<LightSensor*>(_sensorManager.getSensor("Light"));
+    PIRSensor*   pirSensor   = static_cast<PIRSensor*>(_sensorManager.getSensor("PIR"));
+
+    bool isNight    = lightSensor ? lightSensor->isNight()    : false;
+    bool isDetected = pirSensor   ? pirSensor->isDetected()   : false;
+
+    JsonObject automation = root["automation"].to<JsonObject>();
+    automation["mode"]         = isNight ? "night" : "day";
+    automation["modeText"]     = isNight ? "黑夜模式" : "白天模式";
+    automation["pirDetected"]  = isDetected;
+
+    if (isNight) {
+        automation["action"] = isDetected ? "检测到人 → 应开灯" : "无人 → 应关灯";
+    } else {
+        automation["action"] = "白天 → 自动关灯";
+    }
+
     String output;
     serializeJson(root, output);
     return output;

@@ -1,28 +1,9 @@
 /**
  * @file PIRSensor.h
- * @brief 人体感应传感器（PIR - Passive Infrared Sensor）
+ * @brief 人体感应传感器（PIR）- 轮询模式 + 智能保持
  * 
- * PIR传感器用于检测人体移动
- * 当检测到人体红外辐射时输出高电平
- * 
- * 硬件连接：
- * - VCC → 5V
- * - GND → GND
- * - OUT → GPIO引脚
- * 
- * 使用示例：
- * ```cpp
- * sensorManager.addSensor(new PIRSensor("PIR", 5));  // GPIO5
- * 
- * // 可选：注册回调，实时响应
- * pirSensor->onValueChanged([](Sensor* s, float newVal, float oldVal) {
- *     if (newVal > 0) {
- *         Serial.println("检测到人！");
- *     } else {
- *         Serial.println("无人");
- *     }
- * });
- * ```
+ * PIR传感器检测红外辐射变化
+ * 智能保持机制：检测到人后保持一段时间，避免频繁切换
  */
 
 #ifndef PIR_SENSOR_H
@@ -32,11 +13,12 @@
 
 /**
  * @class PIRSensor
- * @brief 人体感应传感器
+ * @brief 人体感应传感器 - 智能保持模式（轮询）
  * 
- * 返回值：
- * - 1.0 = 检测到人
- * - 0.0 = 无人
+ * 工作机制：
+ * 1. 检测到人（GPIO HIGH） → 立即响应
+ * 2. 保持"有人"状态一段时间（默认5秒）
+ * 3. 超时后才变为"无人"
  */
 class PIRSensor : public Sensor {
 public:
@@ -44,75 +26,78 @@ public:
      * @brief 构造函数
      * @param name 传感器名称
      * @param pin GPIO引脚号
+     * @param holdTime 软件保持时间（毫秒），默认5秒
      */
-    PIRSensor(const String& name, uint8_t pin) 
+    PIRSensor(const String& name, uint8_t pin, unsigned long holdTime = 5000) 
         : Sensor(name, "pir"), 
           _pin(pin),
-          _detected(false) {}
+          _holdTime(holdTime),
+          _detected(false),
+          _lastTriggerTime(0) {
+    }
 
-    /**
-     * @brief 初始化传感器
-     */
     bool begin() override {
         pinMode(_pin, INPUT);
+        
+        _detected = false;
+        _lastTriggerTime = 0;
+        
         return true;
     }
 
-    /**
-     * @brief 读取传感器数据
-     */
     bool read() override {
-        // 读取GPIO状态
-        bool detected = digitalRead(_pin) == HIGH;
+        // 直接读取GPIO状态
+        bool currentGPIO = digitalRead(_pin);
+        unsigned long now = millis();
         
-        // 更新状态
-        _detected = detected;
-        
-        // 触发回调（如果状态变化）
-        notifyValueChanged(_detected ? 1.0 : 0.0);
+        // 检测到人（GPIO HIGH）
+        if (currentGPIO == HIGH) {
+            _lastTriggerTime = now;  // 更新最后触发时间
+            
+            // 从"无人"切换到"有人"
+            if (!_detected) {
+                _detected = true;
+                notifyValueChanged(1.0);  // 触发回调
+            }
+        } 
+        // 没检测到人（GPIO LOW）
+        else {
+            // 检查是否超过保持时间
+            if (_detected && (now - _lastTriggerTime > _holdTime)) {
+                _detected = false;
+                notifyValueChanged(0.0);  // 触发回调（关灯）
+            }
+        }
         
         return true;
     }
 
-    /**
-     * @brief 获取传感器值
-     * @return 1.0=检测到人，0.0=无人
-     */
     float getValue() const override {
-        return _detected ? 1.0 : 0.0;
+        return _detected ? 1.0f : 0.0f;
     }
 
     /**
-     * @brief 检查是否检测到人
+     * @brief 判断当前是否检测到人
      * @return true=检测到人，false=无人
      */
     bool isDetected() const {
         return _detected;
     }
 
-    /**
-     * @brief 获取JSON数据
-     * 
-     * JSON格式：
-     * {
-     *   "name": "PIR",
-     *   "type": "pir",
-     *   "detected": true,
-     *   "value": 1.0,
-     *   "state": "检测到人"
-     * }
-     */
     void getJSON(JsonObject& doc) override {
         doc["name"] = _name;
-        doc["type"] = _type;
+        doc["type"] = "pir";
+        doc["value"] = getValue();
         doc["detected"] = _detected;
-        doc["value"] = _detected ? 1.0 : 0.0;
         doc["state"] = _detected ? "检测到人" : "无人";
+        doc["mode"] = "polling";
     }
 
 private:
-    uint8_t _pin;     ///< GPIO引脚号
-    bool _detected;   ///< 是否检测到人
+    uint8_t _pin;                    ///< GPIO引脚号
+    unsigned long _holdTime;         ///< 保持时间（毫秒）
+    bool _detected;                  ///< 当前是否检测到人
+    unsigned long _lastTriggerTime;  ///< 最后触发时间
 };
 
 #endif // PIR_SENSOR_H

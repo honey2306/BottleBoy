@@ -147,6 +147,12 @@ const char HTML_INDEX[] PROGMEM = R"rawliteral(
             color: #666;
         }
         
+        .sensor-status.disabled {
+            background: #ffeb3b;
+            color: #f57c00;
+            font-weight: bold;
+        }
+        
         .sensor-badge {
             display: inline-block;
             padding: 3px 10px;
@@ -376,7 +382,29 @@ const char HTML_INDEX[] PROGMEM = R"rawliteral(
             ws.onmessage = function(event) {
                 const data = JSON.parse(event.data);
                 if (data.sensors) updateSensors(data.sensors);
-                if (data.actuators) updateActuators(data.actuators);
+                if (data.actuators) {
+                    data.actuators.forEach(a => { actuatorStates[a.name] = a.state; });
+                    const actuatorsDiv = document.getElementById('actuators');
+                    if (actuatorsDiv.children.length === 0 || actuatorsDiv.querySelector('.card h3')?.textContent === '等待数据...') {
+                        updateActuators(data.actuators);
+                    } else {
+                        // 已有卡片，只更新状态
+                        data.actuators.forEach(actuator => {
+                            if (!isDragging[actuator.name]) {
+                                updateActuatorState(actuator);
+                            } else {
+                                // 拖动时至少更新按钮
+                                updateButtonState(actuator);
+                            }
+                        });
+                    }
+                }
+                if (data.uptime !== undefined) {
+                    document.getElementById('uptime').textContent = formatUptime(data.uptime);
+                    document.getElementById('freeHeap').textContent = formatBytes(data.freeHeap);
+                    document.getElementById('chipModel').textContent = data.chipModel;
+                    document.getElementById('cpuFreq').textContent = data.cpuFreq + ' MHz';
+                }
             };
             
             ws.onerror = function(error) {
@@ -419,25 +447,32 @@ const char HTML_INDEX[] PROGMEM = R"rawliteral(
                             </div>
                         `;
                     }
-                    // PIR人体传感器
                     else if (sensor.type === 'pir') {
                         const isDetected = sensor.detected || false;
+                        const isDisabled = sensor.disabled || false;
+                        const disabledReason = sensor.disabledReason || '';
+                        
+                        let statusHtml = '';
+                        if (isDisabled) {
+                            statusHtml = `<div class="sensor-status disabled">⊗ 已禁用: ${disabledReason}</div>`;
+                        } else {
+                            statusHtml = `<div class="sensor-status ${isDetected ? 'active' : 'inactive'}">
+                                ${isDetected ? '✓ 检测到人' : '○ 无人'}
+                            </div>`;
+                        }
+                        
                         card.innerHTML = `
                             <h3>👤 ${sensor.name}</h3>
-                            <div class="sensor-value">${sensor.state || '无人'}</div>
-                            <div class="sensor-status ${isDetected ? 'active' : 'inactive'}">
-                                ${isDetected ? '✓ 检测到人' : '○ 无人'}
-                            </div>
+                            <div class="sensor-value">${isDisabled ? '禁用中' : (sensor.state || '无人')}</div>
+                            ${statusHtml}
                         `;
                     }
-                    // 光敏传感器
                     else if (sensor.type === 'light') {
+                        const displayValue = sensor.displayValue || '--';
                         card.innerHTML = `
                             <h3>💡 ${sensor.name}</h3>
-                            <div class="sensor-value">${sensor.value?.toFixed(0) || '--'}</div>
-                            <div class="sensor-unit">${sensor.unit || 'lux'} (${sensor.percentage?.toFixed(1) || '0'}%)</div>
-                            <div class="sensor-badge">${sensor.level || '--'}</div>
-                            <div class="sensor-badge">${sensor.dayNight || '--'} ${sensor.isDayTime ? '☀️' : '🌙'}</div>
+                            <div class="sensor-value">${displayValue}</div>
+                            <div class="sensor-unit">环境光线</div>
                         `;
                     }
                     // 其他传感器
@@ -455,20 +490,100 @@ const char HTML_INDEX[] PROGMEM = R"rawliteral(
             }
         }
         
+        let actuatorStates = {};
+        
         function updateActuators(actuators) {
             const actuatorsDiv = document.getElementById('actuators');
             
             if (actuators && actuators.length > 0) {
-                actuatorsDiv.innerHTML = '';
-                
                 actuators.forEach(actuator => {
-                    const card = document.createElement('div');
-                    card.className = 'card';
+                    updateOrCreateActuatorCard(actuator, actuatorsDiv);
+                });
+            }
+        }
+        
+        function updateActuatorState(actuator) {
+            // 更新按钮、滑块和显示值
+            const cards = document.querySelectorAll('.card');
+            cards.forEach(card => {
+                const h3 = card.querySelector('h3');
+                if (h3 && h3.textContent.includes(actuator.name)) {
+                    // 更新滑块值
+                    const brightnessSlider = card.querySelector(`#${actuator.name}-brightness`);
+                    const colorTempSlider = card.querySelector(`#${actuator.name}-colortemp`);
+                    if (brightnessSlider) {
+                        brightnessSlider.value = actuator.brightness || 0;
+                        document.getElementById(actuator.name + '-brightness-val').textContent = actuator.brightness || 0;
+                        document.getElementById(actuator.name + '-brightness-display').textContent = actuator.brightness || 0;
+                    }
+                    if (colorTempSlider) {
+                        colorTempSlider.value = actuator.colorTemp || 50;
+                        const temps = ['暖光', '暖白', '中性白', '冷白', '纯白光'];
+                        const index = Math.floor((actuator.colorTemp || 50) / 20);
+                        document.getElementById(actuator.name + '-colortemp-val').textContent = temps[Math.min(index, 4)];
+                    }
                     
-                    // 双色调温LED
+                    // 更新按钮
+                    updateButtonState(actuator);
+                    
+                    // 更新状态显示
                     if (actuator.type === 'dual_color_led') {
+                        const statusDiv = card.querySelector('[style*="margin-top: 10px"]');
+                        if (statusDiv) {
+                            const isOn = actuator.state === 'on';
+                            statusDiv.innerHTML = `
+                                状态: ${isOn ? '开启' : '关闭'} | 
+                                白光: ${actuator.whiteValue || 0} | 
+                                暖光: ${actuator.warmValue || 0}
+                            `;
+                        }
+                    }
+                }
+            });
+        }
+        
+        function updateButtonState(actuator) {
+            // 只更新按钮状态
+            const cards = document.querySelectorAll('.card');
+            cards.forEach(card => {
+                const h3 = card.querySelector('h3');
+                if (h3 && h3.textContent.includes(actuator.name)) {
+                    const btn = card.querySelector('.btn');
+                    if (btn && actuator.state) {
                         const isOn = actuator.state === 'on';
-                        card.innerHTML = `
+                        btn.className = `btn ${isOn ? 'btn-danger' : 'btn-success'}`;
+                        btn.textContent = isOn ? '关灯' : '开灯';
+                    }
+                }
+            });
+        }
+        
+        function updateOrCreateActuatorCard(actuator, container) {
+            // 查找现有卡片
+            let existingCard = null;
+            const cards = container.querySelectorAll('.card');
+            cards.forEach(card => {
+                const h3 = card.querySelector('h3');
+                if (h3 && h3.textContent.includes(actuator.name)) {
+                    existingCard = card;
+                }
+            });
+            
+            if (!existingCard) {
+                // 创建新卡片
+                createActuatorCard(actuator, container);
+            }
+        }
+        
+        function createActuatorCard(actuator, container) {
+            container.innerHTML = '';
+            const card = document.createElement('div');
+            card.className = 'card';
+            
+            // 双色调温LED
+            if (actuator.type === 'dual_color_led') {
+                const isOn = actuator.state === 'on';
+                card.innerHTML = `
                             <h3>💡 ${actuator.name}</h3>
                             
                             <div class="control-group">
@@ -478,8 +593,9 @@ const char HTML_INDEX[] PROGMEM = R"rawliteral(
                                 <div class="slider-container">
                                     <input type="range" min="0" max="255" value="${actuator.brightness || 0}" 
                                            class="slider" id="${actuator.name}-brightness"
-                                           onchange="setLEDBrightness('${actuator.name}', this.value)">
-                                    <span class="slider-value">${actuator.brightness || 0}</span>
+                                           oninput="previewBrightness('${actuator.name}', this.value)"
+                                           onchange="sendBrightness('${actuator.name}', this.value)">
+                                    <span class="slider-value" id="${actuator.name}-brightness-display">${actuator.brightness || 0}</span>
                                 </div>
                             </div>
                             
@@ -491,7 +607,8 @@ const char HTML_INDEX[] PROGMEM = R"rawliteral(
                                     <span style="font-size: 1.2em;">🔥</span>
                                     <input type="range" min="0" max="100" value="${actuator.colorTemp || 50}" 
                                            class="slider" id="${actuator.name}-colortemp"
-                                           onchange="setLEDColorTemp('${actuator.name}', this.value)">
+                                           oninput="previewColorTemp('${actuator.name}', this.value)"
+                                           onchange="sendColorTemp('${actuator.name}', this.value)">
                                     <span style="font-size: 1.2em;">❄️</span>
                                 </div>
                             </div>
@@ -509,11 +626,11 @@ const char HTML_INDEX[] PROGMEM = R"rawliteral(
                                 暖光: ${actuator.warmValue || 0}
                             </div>
                         `;
-                    }
-                    // 普通LED
-                    else if (actuator.type === 'led') {
-                        const isOn = actuator.state === 'on';
-                        card.innerHTML = `
+            }
+            // 普通LED
+            else if (actuator.type === 'led') {
+                const isOn = actuator.state === 'on';
+                card.innerHTML = `
                             <h3>💡 ${actuator.name}</h3>
                             <div class="sensor-value">${actuator.brightness || 0}</div>
                             <div class="sensor-unit">亮度</div>
@@ -530,100 +647,71 @@ const char HTML_INDEX[] PROGMEM = R"rawliteral(
                                 </button>
                             </div>
                         `;
-                    }
-                    // 其他执行器
-                    else {
-                        card.innerHTML = `
+            }
+            // 其他执行器
+            else {
+                card.innerHTML = `
                             <h3>${actuator.name}</h3>
                             <div class="sensor-value">${actuator.value !== undefined ? actuator.value : '--'}</div>
                             <div class="sensor-badge">类型: ${actuator.type}</div>
                             <div class="sensor-badge">状态: ${actuator.state || 'unknown'}</div>
                         `;
-                    }
-                    
-                    actuatorsDiv.appendChild(card);
-                });
+            }
+            
+            container.appendChild(card);
+        }
+        
+        let isDragging = {};
+        
+        // oninput: 只更新界面显示，零延迟
+        function previewBrightness(name, value) {
+            document.getElementById(name + '-brightness-val').textContent = value;
+            document.getElementById(name + '-brightness-display').textContent = value;
+            isDragging[name] = true;
+        }
+        
+        function previewColorTemp(name, value) {
+            const temps = ['暖光', '暖白', '中性白', '冷白', '纯白光'];
+            const index = Math.min(Math.floor(value / 20), 4);
+            document.getElementById(name + '-colortemp-val').textContent = temps[index];
+            isDragging[name] = true;
+        }
+        
+        // onchange: 松手才发送，一条命令搞定
+        function sendBrightness(name, value) {
+            isDragging[name] = false;
+            sendControl({ cmd: 'control', name: name, brightness: parseInt(value) });
+        }
+        
+        function sendColorTemp(name, value) {
+            isDragging[name] = false;
+            sendControl({ cmd: 'control', name: name, colorTemp: parseInt(value) });
+        }
+        
+        function sendControl(payload) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify(payload));
             }
         }
         
-        function setLEDBrightness(name, value) {
-            document.getElementById(name + '-brightness-val').textContent = value;
-            fetch('/api/actuators/' + name, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({brightness: parseInt(value)})
-            }).then(() => refreshData());
-        }
-        
-        function setLEDColorTemp(name, value) {
-            const temps = ['暖光', '暖白', '中性白', '冷白', '纯白光'];
-            const index = Math.floor(value / 20);
-            document.getElementById(name + '-colortemp-val').textContent = temps[Math.min(index, 4)];
-            
-            fetch('/api/actuators/' + name, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({colorTemp: parseInt(value)})
-            }).then(() => refreshData());
-        }
-        
         function toggleLED(name) {
-            // 先获取当前状态
-            fetch('/api/actuators/' + name)
-                .then(response => response.json())
-                .then(data => {
-                    const newState = data.state === 'on' ? 'off' : 'on';
-                    return fetch('/api/actuators/' + name, {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({state: newState})
-                    });
-                })
-                .then(() => refreshData());
+            const currentState = actuatorStates[name] || 'off';
+            const newState = currentState === 'on' ? 'off' : 'on';
+            sendControl({ cmd: 'control', name: name, state: newState });
         }
         
         function setActuator(name, value) {
-            fetch('/api/actuators/' + name, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({value: parseFloat(value)})
-            }).then(() => refreshData());
+            sendControl({ cmd: 'control', name: name, brightness: parseFloat(value) });
         }
         
         function toggleActuator(name) {
-            fetch('/api/actuators/' + name)
-                .then(response => response.json())
-                .then(data => {
-                    const newState = data.state === 'on' ? 'off' : 'on';
-                    return fetch('/api/actuators/' + name, {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({state: newState})
-                    });
-                })
-                .then(() => refreshData());
+            const currentState = actuatorStates[name] || 'off';
+            const newState = currentState === 'on' ? 'off' : 'on';
+            sendControl({ cmd: 'control', name: name, state: newState });
         }
         
         function refreshData() {
-            fetch('/api/sensors')
-                .then(response => response.json())
-                .then(data => updateSensors(data.sensors))
-                .catch(error => console.error('Error:', error));
-            
-            fetch('/api/actuators')
-                .then(response => response.json())
-                .then(data => updateActuators(data.actuators))
-                .catch(error => console.error('Error:', error));
-            
-            fetch('/api/system')
-                .then(response => response.json())
-                .then(data => {
-                    document.getElementById('uptime').textContent = formatUptime(data.uptime);
-                    document.getElementById('freeHeap').textContent = formatBytes(data.freeHeap);
-                    document.getElementById('chipModel').textContent = data.chipModel;
-                    document.getElementById('cpuFreq').textContent = data.cpuFreq + ' MHz';
-                })
-                .catch(error => console.error('Error:', error));
+            sendControl({ cmd: 'getData' });
         }
         
         function formatUptime(seconds) {
@@ -646,8 +734,15 @@ const char HTML_INDEX[] PROGMEM = R"rawliteral(
         
         connectWebSocket();
         
-        setInterval(refreshData, 5000);
-        refreshData();
+        // 降低自动刷新频率到10秒，避免干扰滑动
+        setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN && !Object.values(isDragging).some(Boolean)) {
+                sendControl({ cmd: 'getData' });
+            }
+        }, 10000);
+        
+        // 初始数据加载
+        setTimeout(refreshData, 500);
     </script>
 </body>
 </html>

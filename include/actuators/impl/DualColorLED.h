@@ -27,6 +27,8 @@
 #define DUAL_COLOR_LED_H
 
 #include "actuators/base/Actuator.h"
+#include "core/Config.h"
+#include <Arduino.h>
 
 /**
  * @class DualColorLED
@@ -44,11 +46,11 @@ public:
         : Actuator(name, "dual_color_led"),
           _whitePin(whitePin),
           _warmPin(warmPin),
-          _brightness(0),
+          _brightness(200),
           _colorTemp(50),
           _isOn(false),
-          _lastBrightness(0),
-          _lastColorTemp(50) {}
+          _isAutoOn(false),
+          _autoOnTime(0) {}
 
     /**
      * @brief 初始化LED
@@ -73,11 +75,7 @@ public:
     bool setValue(float value) override {
         // 限制范围 0-255
         _brightness = constrain((int)value, 0, 255);
-        
-        // 更新状态
         _isOn = (_brightness > 0);
-        
-        // 应用到LED
         updateLED();
         
         return true;
@@ -118,8 +116,6 @@ public:
     void setColorTemperature(uint8_t colorTemp) {
         // 限制范围 0-100
         _colorTemp = constrain(colorTemp, 0, 100);
-        
-        // 如果灯是开着的，更新LED
         if (_isOn) {
             updateLED();
         }
@@ -136,37 +132,54 @@ public:
     /**
      * @brief 开灯
      * 
-     * 恢复到上次关灯前的亮度和色温
-     * 如果是第一次开灯（没有历史值），则使用默认值
+     * 使用当前 _brightness 和 _colorTemp（构造时已初始化为默认值 200 / 50）
      */
     void turnOn() {
         _isOn = true;
-        
-        // 如果从未设置过亮度，使用默认值
-        if (_brightness == 0 && _lastBrightness == 0) {
-            _brightness = 200;     // 默认亮度
-            _colorTemp = 50;       // 默认中性色温
-        } else if (_brightness == 0) {
-            // 恢复上次的亮度和色温
-            _brightness = _lastBrightness;
-            _colorTemp = _lastColorTemp;
-        }
-        
         updateLED();
+    }
+
+    /**
+     * @brief 以夜间模式开灯（固定亮度和色温，不修改 _brightness / _colorTemp）
+     * 
+     * 使用 Config.h 中定义的 NIGHT_LED_BRIGHTNESS 和 NIGHT_LED_COLOR_TEMP。
+     * 开启自动模式，经过 NIGHT_LED_AUTO_OFF_TIME 毫秒后由 update() 自动关灯。
+     * 若已处于自动模式则重置倒计时。
+     */
+    void turnOnNightMode() {
+        _isOn       = true;
+        _isAutoOn   = true;
+        _autoOnTime = millis();
+        updateLED(NIGHT_LED_BRIGHTNESS, NIGHT_LED_COLOR_TEMP);
+    }
+
+    /**
+     * @brief 查询夜灯是否处于自动开启状态
+     * @return true = 自动模式中，false = 非自动模式
+     */
+    bool isAutoOn() const { return _isAutoOn; }
+
+    /**
+     * @brief 主循环更新 - 检查自动关灯倒计时
+     * 
+     * 由 ActuatorManager::update() 每帧调用。
+     * 处于自动模式且超过 NIGHT_LED_AUTO_OFF_TIME 时自动关灯。
+     */
+    void update() override {
+        if (!_isAutoOn) return;
+        if (millis() - _autoOnTime >= NIGHT_LED_AUTO_OFF_TIME) {
+            turnOff();
+            _isAutoOn = false;
+        }
     }
 
     /**
      * @brief 关灯
      * 
-     * 保存当前的亮度和色温，以便下次开灯时恢复
+     * 仅将 _isOn 置 false 并关掉 PWM 输出，
+     * _brightness 和 _colorTemp 保持不变，下次 turnOn() 可直接恢复。
      */
     void turnOff() {
-        // 保存当前状态
-        if (_brightness > 0) {
-            _lastBrightness = _brightness;
-            _lastColorTemp = _colorTemp;
-        }
-        
         _isOn = false;
         analogWrite(_whitePin, 0);
         analogWrite(_warmPin, 0);
@@ -229,10 +242,9 @@ public:
         doc["colorTempDesc"] = colorDesc;
         
         // 当前白光和暖光的实际PWM值
-        uint8_t white, warm;
-        calculatePWM(white, warm);
-        doc["whiteValue"] = white;
-        doc["warmValue"] = warm;
+        const float whiteRatio = _colorTemp / 100.0f;
+        doc["whiteValue"] = _isOn ? (uint8_t)(_brightness * whiteRatio)       : 0;
+        doc["warmValue"]  = _isOn ? (uint8_t)(_brightness * (1.0f - whiteRatio)) : 0;
     }
 
     /**
@@ -276,51 +288,31 @@ public:
     }
 
 private:
-    uint8_t _whitePin;          ///< 白光引脚号
-    uint8_t _warmPin;           ///< 暖光引脚号
-    uint8_t _brightness;        ///< 当前亮度（0-255）
-    uint8_t _colorTemp;         ///< 当前色温（0-100）
-    bool _isOn;                 ///< 开关状态
-    uint8_t _lastBrightness;    ///< 上次关灯前的亮度
-    uint8_t _lastColorTemp;     ///< 上次关灯前的色温
+    uint8_t       _whitePin;     ///< 白光引脚号
+    uint8_t       _warmPin;      ///< 暖光引脚号
+    uint8_t       _brightness;   ///< 当前亮度（0-255）
+    uint8_t       _colorTemp;    ///< 当前色温（0-100）
+    bool          _isOn;         ///< 开关状态
+    bool          _isAutoOn;     ///< 是否处于夜间自动模式
+    unsigned long _autoOnTime;   ///< 自动模式开启的时间戳（ms）
 
     /**
-     * @brief 计算白光和暖光的PWM值
-     * 
-     * 根据亮度和色温计算两个引脚的PWM值
-     * 
-     * @param white 输出白光PWM值
-     * @param warm 输出暖光PWM值
+     * @brief 用当前成员变量更新 LED 输出
      */
-    void calculatePWM(uint8_t& white, uint8_t& warm) const {
-        if (!_isOn || _brightness == 0) {
-            white = 0;
-            warm = 0;
-            return;
-        }
-        
-        // 根据色温计算白光和暖光的比例
-        // colorTemp: 0=纯暖光, 100=纯白光
-        float whiteRatio = _colorTemp / 100.0;      // 白光比例 0-1
-        float warmRatio = 1.0 - whiteRatio;         // 暖光比例 1-0
-        
-        // 应用亮度
-        white = (uint8_t)(_brightness * whiteRatio);
-        warm = (uint8_t)(_brightness * warmRatio);
+    void updateLED() {
+        updateLED(_brightness, _colorTemp);
     }
 
     /**
-     * @brief 更新LED输出
+     * @brief 用指定参数直接输出 PWM（不检查成员变量）
      * 
-     * 根据当前亮度和色温计算并输出PWM值
+     * @param brightness 亮度（0-255）
+     * @param colorTemp  色温（0-100，0=纯暖光，100=纯白光）
      */
-    void updateLED() {
-        uint8_t white, warm;
-        calculatePWM(white, warm);
-        
-        // 输出到引脚
-        analogWrite(_whitePin, white);
-        analogWrite(_warmPin, warm);
+    void updateLED(uint8_t brightness, uint8_t colorTemp) {
+        const float whiteRatio = colorTemp / 100.0f;
+        analogWrite(_whitePin, (uint8_t)(brightness * whiteRatio));
+        analogWrite(_warmPin,  (uint8_t)(brightness * (1.0f - whiteRatio)));
     }
 };
 

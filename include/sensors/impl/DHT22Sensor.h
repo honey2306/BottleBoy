@@ -28,6 +28,10 @@
  * 这个传感器同时返回温度和湿度两个数据
  * - getValue() 返回温度值（主要值）
  * - getJSON() 返回温度和湿度完整数据
+ * 
+ * 特点：
+ * - 读取失败时保留上次有效值
+ * - 避免频繁读取（最小2秒间隔）
  */
 class DHT22Sensor : public Sensor {
 public:
@@ -41,7 +45,9 @@ public:
           _pin(pin),
           _dht(pin, DHT22),
           _temperature(NAN), 
-          _humidity(NAN) {}
+          _humidity(NAN),
+          _lastReadTime(0),
+          _readFailCount(0) {}
 
     /**
      * @brief 初始化传感器
@@ -53,8 +59,20 @@ public:
 
     /**
      * @brief 读取温湿度数据
+     * 
+     * DHT22规范要求至少2秒读取间隔
+     * 读取失败时保留上次有效值
      */
     bool read() override {
+        unsigned long now = millis();
+        
+        // 确保至少2秒间隔（溢出安全）
+        if (now - _lastReadTime < 2000) {
+            return true;
+        }
+        
+        _lastReadTime = now;
+        
         // 读取温度（摄氏度）
         float temp = _dht.readTemperature();
         
@@ -63,14 +81,19 @@ public:
         
         // 检查是否读取成功
         if (isnan(temp) || isnan(hum)) {
+            _readFailCount++;
             return false;
+        }
+        
+        // 读取成功，更新值
+        if (_readFailCount > 0) {
+            _readFailCount = 0;
         }
         
         _temperature = temp;
         _humidity = hum;
         
-        // 触发回调（如果注册了）
-        // 使用温度作为主值
+        // 触发回调（使用温度作为主值）
         notifyValueChanged(_temperature);
         
         return true;
@@ -96,15 +119,7 @@ public:
      * @brief 获取JSON数据（包含温度和湿度）
      * 
      * JSON格式：
-     * {
-     *   "name": "DHT22",
-     *   "type": "dht22",
-     *   "temperature": 25.6,
-     *   "humidity": 65.2,
-     *   "tempUnit": "°C",
-     *   "humUnit": "%"
-     * }
-     */
+     * {\n     *   \"name\": \"DHT22\",\n     *   \"type\": \"dht22\",\n     *   \"temperature\": 25.6,\n     *   \"humidity\": 65.2,\n     *   \"tempUnit\": \"°C\",\n     *   \"humUnit\": \"%\"\n     * }\n     */
     void getJSON(JsonObject& doc) override {
         doc["name"] = _name;
         doc["type"] = _type;
@@ -112,13 +127,20 @@ public:
         doc["humidity"] = _humidity;
         doc["tempUnit"] = "°C";
         doc["humUnit"] = "%";
+        
+        if (_readFailCount > 0) {
+            doc["warning"] = "读取异常";
+            doc["failCount"] = _readFailCount;
+        }
     }
 
 private:
-    uint8_t _pin;        ///< GPIO引脚号
-    DHT _dht;            ///< DHT对象
-    float _temperature;  ///< 当前温度值
-    float _humidity;     ///< 当前湿度值
+    uint8_t _pin;
+    DHT _dht;
+    float _temperature;
+    float _humidity;
+    unsigned long _lastReadTime;
+    uint16_t _readFailCount;
 };
 
 #endif // DHT22_SENSOR_H

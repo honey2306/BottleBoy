@@ -66,6 +66,13 @@ public:
      */
     size_t getActuatorCount() const { return _actuators.size(); }
 
+    /**
+     * @brief 驱动所有执行器的 update()
+     * 
+     * 在 loop() 每帧调用，统一处理各执行器的定时逻辑。
+     */
+    void update();
+
 private:
     std::vector<Actuator*> _actuators; ///< 执行器列表
 };

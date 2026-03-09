@@ -112,18 +112,29 @@ void SensorManager::readAll() {
  * @param doc JSON文档对象（传入引用，函数会修改这个对象）
  */
 void SensorManager::getAllJSON(JsonObject& doc) {
-    // 在JSON文档中创建一个名为"sensors"的数组
     JsonArray sensorsArray = doc["sensors"].to<JsonArray>();
     
-    // 遍历所有传感器
+    Sensor* lightSensor = getSensor("Light");
+    bool isNight = false;
+    if (lightSensor && lightSensor->isEnabled()) {
+        isNight = (lightSensor->getValue() == 1.0);
+    }
+    
     for (auto sensor : _sensors) {
-        // 只添加启用的传感器
         if (sensor->isEnabled()) {
-            // 在数组中创建一个新的JSON对象
             JsonObject sensorObj = sensorsArray.add<JsonObject>();
-            
-            // 让传感器自己填充数据到这个JSON对象中
             sensor->getJSON(sensorObj);
+            
+            if (sensor->getType() == "pir") {
+                if (!isNight) {
+                    sensorObj["disabled"] = true;
+                    sensorObj["disabledReason"] = "白天模式";
+                } else {
+                    sensorObj["disabled"] = false;
+                }
+            } else if (sensor->getType() == "light") {
+                sensorObj["displayValue"] = isNight ? "黑夜" : "白天";
+            }
         }
     }
 }
@@ -146,4 +157,17 @@ Sensor* SensorManager::getSensor(const String& name) {
     }
     
     return nullptr;  // 没找到，返回空指针
+}
+
+/**
+ * @brief 根据索引获取传感器
+ * 
+ * @param index 传感器索引（0到getSensorCount()-1）
+ * @return 传感器指针，索引越界返回nullptr
+ */
+Sensor* SensorManager::getSensor(size_t index) {
+    if (index >= _sensors.size()) {
+        return nullptr;
+    }
+    return _sensors[index];
 }

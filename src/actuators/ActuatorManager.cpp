@@ -126,17 +126,19 @@ Actuator* ActuatorManager::getActuator(const String& name) {
  * @return true 控制成功，false 失败（执行器不存在或设置失败）
  */
 bool ActuatorManager::controlActuator(const String& name, float value) {
-    // 查找执行器
     Actuator* actuator = getActuator(name);
-    
-    if (actuator == nullptr) {
-        return false;  // 执行器不存在
-    }
-    
-    if (!actuator->isEnabled()) {
-        return false;  // 执行器已禁用
-    }
-    
-    // 设置值
+    if (actuator == nullptr) return false;
+    if (!actuator->isEnabled()) return false;
     return actuator->setValue(value);
+}
+
+/**
+ * @brief 驱动所有执行器的 update()
+ */
+void ActuatorManager::update() {
+    for (auto actuator : _actuators) {
+        if (actuator->isEnabled()) {
+            actuator->update();
+        }
+    }
 }
