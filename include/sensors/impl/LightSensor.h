@@ -109,6 +109,8 @@ public:
         doc["lightIntensity"] = getValue();
         doc["nightThreshold"] = _nightThreshold;
         doc["dayThreshold"]   = _dayThreshold;
+        // 亮度百分比（0=全暗，100=全亮）
+        doc["percent"]        = (uint8_t)constrain((_analogValue * 100) / 4095, 0, 100);
 
         char displayStr[50];
         sprintf(displayStr, "%s (ADC:%d)", _isNight ? "🌙 黑夜" : "☀️ 白天", _analogValue);

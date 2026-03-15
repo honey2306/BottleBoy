@@ -56,14 +56,12 @@ public:
             
             if (!_detected) {
                 _detected = true;
-                Serial.printf("\xf0\x9f\x94\xa5wufan PIR DETECTED (pin=%d)\n", _pin);
                 notifyValueChanged(1.0);
             }
         } 
         else {
             if (_detected && (now - _lastTriggerTime > _holdTime)) {
                 _detected = false;
-                Serial.printf("\xf0\x9f\x94\xa5wufan PIR CLEARED (held %lums)\n", now - _lastTriggerTime);
                 notifyValueChanged(0.0);
             }
         }

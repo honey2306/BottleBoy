@@ -50,8 +50,8 @@ void AutomationRules::registerCallbacks() {
  * 自锁按钮锁住期间（手动模式）不响应 PIR
  */
 void AutomationRules::onPIRChanged(Sensor* sensor, float newValue, float oldValue) {
-    // 手动模式期间跳过 PIR 自动逻辑
-    if (_latchBtn && _latchBtn->isLatched()) {
+    // 手动模式或感应模式关闭时跳过 PIR 自动逻辑
+    if (!_pirEnabled || (_latchBtn && _latchBtn->isLatched())) {
         broadcastSensorData();
         return;
     }
@@ -65,9 +65,6 @@ void AutomationRules::onPIRChanged(Sensor* sensor, float newValue, float oldValu
     bool isNight    = _lightSensor ? _lightSensor->isNight() : false;
     bool isDetected = _pirSensor   ? _pirSensor->isDetected() : false;
     bool isLedOn    = _ledActuator ? _ledActuator->isOn()     : false;
-
-    Serial.printf("\xf0\x9f\x94\xa5wufan onPIRChanged: val=%.1f isNight=%d isDetected=%d isLedOn=%d\n",
-        newValue, isNight, isDetected, isLedOn);
 
     // 只在灯是关着时才开灯，不重置已在计时的倒计时
     if (isNight && isDetected && !isLedOn) {
@@ -93,8 +90,6 @@ void AutomationRules::update() {
 void AutomationRules::onLatchButtonChanged(Sensor* sensor, float newValue, float oldValue) {
     if (!_ledActuator) return;
 
-    Serial.printf("🔥wufan onLatchButtonChanged: %.1f -> %.1f\n", oldValue, newValue);
-
     if (newValue == 1.0f) {
         // 按钮锁住：直接开灯，_isAutoOn 保持 false，PIR 自动逻辑被屏蔽
         _ledActuator->turnOn();
@@ -114,9 +109,7 @@ void AutomationRules::updateNightLED() {
     // 追踪 isAutoOn 从 true → false 的瞬间（即 DualColorLED::update() 触发了自动关灯）
     bool isAutoOn = _ledActuator->isAutoOn();
     if (_wasAutoOn && !isAutoOn) {
-        // 自动关灯发生，启动冷却计时
         _ledOffTime = millis();
-        Serial.printf("\xf0\x9f\x94\xa5wufan LED auto-off, cooldown %dms start\n", NIGHT_LED_COOLDOWN_TIME);
     }
     _wasAutoOn = isAutoOn;
 }

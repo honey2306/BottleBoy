@@ -44,7 +44,6 @@ public:
     bool begin() override {
         pinMode(_pin, INPUT_PULLUP);
         _latched = (digitalRead(_pin) == LOW);
-        Serial.printf("\xf0\x9f\x94\xa5wufan LatchBtn begin: pin=%d, initial=%s\n", _pin, _latched ? "LATCHED" : "open");
         return true;
     }
 
@@ -56,11 +55,9 @@ public:
 
         if (current && !_latched) {
             _latched = true;
-            Serial.printf("\xf0\x9f\x94\xa5wufan LatchBtn -> LATCHED (pin=%d)\n", _pin);
             notifyValueChanged(1.0f);
         } else if (!current && _latched) {
             _latched = false;
-            Serial.printf("\xf0\x9f\x94\xa5wufan LatchBtn -> OPEN (pin=%d)\n", _pin);
             notifyValueChanged(0.0f);
         }
 

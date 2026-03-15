@@ -168,7 +168,6 @@ public:
     void update() override {
         if (!_isAutoOn) return;
         if (millis() - _autoOnTime >= NIGHT_LED_AUTO_OFF_TIME) {
-            Serial.printf("\xf0\x9f\x94\xa5wufan LED auto-off triggered\n");
             turnOff();
             _isAutoOn = false;
         }

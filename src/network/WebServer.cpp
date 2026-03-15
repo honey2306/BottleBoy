@@ -14,6 +14,10 @@
 #include "sensors/impl/PIRSensor.h"
 #include "tft/TFTDisplay.h"
 #include "remote/RFManager.h"
+#include "automation/AutomationRules.h"
+
+// 全局 AutomationRules 实例（定义在 main.cpp）
+extern AutomationRules automationRules;
 
 /**
  * @brief 构造函数
@@ -256,6 +260,13 @@ void WebServerManager::onWebSocketEvent(AsyncWebSocket* server, AsyncWebSocketCl
                         else if (cmd == "getData") {
                             client->text(getAllDataJSON());
                         }
+                        else if (cmd == "pirMode") {
+                            // 感应模式开关：{"cmd":"pirMode","enabled":true/false}
+                            if (!doc["enabled"].isNull()) {
+                                automationRules.setPirEnabled(doc["enabled"].as<bool>());
+                                broadcastData();
+                            }
+                        }
                     }
                 }
             }
@@ -406,6 +417,7 @@ String WebServerManager::getAllDataJSON() {
     automation["mode"]         = isNight ? "night" : "day";
     automation["modeText"]     = isNight ? "黑夜模式" : "白天模式";
     automation["pirDetected"]  = isDetected;
+    automation["pirEnabled"]   = automationRules.isPirEnabled();
 
     if (isNight) {
         automation["action"] = isDetected ? "检测到人 → 应开灯" : "无人 → 应关灯";

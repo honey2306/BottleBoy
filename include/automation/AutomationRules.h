@@ -49,6 +49,17 @@ public:
      */
     void update();
 
+    /**
+     * @brief 设置 PIR 感应模式开关
+     * @param enabled true=开启自动感应开灯，false=关闭
+     */
+    void setPirEnabled(bool enabled) { _pirEnabled = enabled; }
+
+    /**
+     * @brief 获取 PIR 感应模式开关状态
+     */
+    bool isPirEnabled() const { return _pirEnabled; }
+
 private:
     SensorManager& _sensorManager;       ///< 传感器管理器引用
     ActuatorManager& _actuatorManager;   ///< 执行器管理器引用
@@ -61,6 +72,7 @@ private:
 
     unsigned long        _ledOffTime   = 0;        ///< 自动关灯时间戳（冷却计时起点）
     bool                 _wasAutoOn    = false;     ///< 上一帧 isAutoOn 状态（用于检测关灯沿）
+    bool                 _pirEnabled   = true;      ///< PIR 感应模式开关（false=关闭自动开灯）
 
 
 
