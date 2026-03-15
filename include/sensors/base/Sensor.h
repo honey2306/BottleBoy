@@ -12,18 +12,21 @@
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
+#include <functional>
 
 // 前置声明
 class Sensor;
 
 /**
  * @brief 传感器值变化回调函数类型
- * 
- * @param sensor 触发回调的传感器指针
+ *
+ * 使用 std::function 支持 lambda（含捕获）、函数指针、成员函数绑定等任意 callable。
+ *
+ * @param sensor   触发回调的传感器指针
  * @param newValue 新值
  * @param oldValue 旧值
  */
-typedef void (*SensorValueChangedCallback)(Sensor* sensor, float newValue, float oldValue);
+using SensorValueChangedCallback = std::function<void(Sensor*, float, float)>;
 
 /**
  * @class Sensor

@@ -5,6 +5,8 @@
 
 #include "init/NetworkInit.h"
 #include "core/Config.h"
+#include "tft/TFTDisplay.h"
+#include "remote/RFManager.h"
 #include <Arduino.h>
 
 namespace NetworkInit {
@@ -26,13 +28,10 @@ void initWiFi(WiFiManager& wifiManager) {
 /**
  * @brief 初始化Web服务器
  */
-WebServerManager* initWebServer(SensorManager& sensorManager, ActuatorManager& actuatorManager) {
-    // 创建Web服务器实例
-    WebServerManager* webServer = new WebServerManager(sensorManager, actuatorManager);
-    
-    // 启动服务器
+WebServerManager* initWebServer(SensorManager& sensorManager, ActuatorManager& actuatorManager,
+                                TFTDisplay& tftDisplay, RFManager& rfManager) {
+    WebServerManager* webServer = new WebServerManager(sensorManager, actuatorManager, tftDisplay, rfManager);
     webServer->begin();
-    
     return webServer;
 }
 

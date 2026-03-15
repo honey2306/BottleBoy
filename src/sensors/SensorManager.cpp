@@ -10,6 +10,7 @@
  */
 
 #include "sensors/base/SensorManager.h"
+#include "sensors/impl/LightSensor.h"
 
 /**
  * @brief 构造函数
@@ -114,27 +115,13 @@ void SensorManager::readAll() {
 void SensorManager::getAllJSON(JsonObject& doc) {
     JsonArray sensorsArray = doc["sensors"].to<JsonArray>();
     
-    Sensor* lightSensor = getSensor("Light");
-    bool isNight = false;
-    if (lightSensor && lightSensor->isEnabled()) {
-        isNight = (lightSensor->getValue() == 1.0);
-    }
+    LightSensor* lightSensor = static_cast<LightSensor*>(getSensor("Light"));
+    bool isNight = lightSensor ? lightSensor->isNight() : false;
     
     for (auto sensor : _sensors) {
         if (sensor->isEnabled()) {
             JsonObject sensorObj = sensorsArray.add<JsonObject>();
             sensor->getJSON(sensorObj);
-            
-            if (sensor->getType() == "pir") {
-                if (!isNight) {
-                    sensorObj["disabled"] = true;
-                    sensorObj["disabledReason"] = "白天模式";
-                } else {
-                    sensorObj["disabled"] = false;
-                }
-            } else if (sensor->getType() == "light") {
-                sensorObj["displayValue"] = isNight ? "黑夜" : "白天";
-            }
         }
     }
 }

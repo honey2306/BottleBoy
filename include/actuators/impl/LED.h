@@ -122,13 +122,13 @@ public:
      */
     bool setFromJSON(JsonObject& doc) override {
         // 优先使用brightness
-        if (doc.containsKey("brightness")) {
+        if (doc["brightness"].is<int>()) {
             int brightness = doc["brightness"];
             return setValue(brightness);
         }
         
         // 其次使用state
-        if (doc.containsKey("state")) {
+        if (doc["state"].is<String>()) {
             String state = doc["state"].as<String>();
             if (state == "on") {
                 return setValue(255);  // 开到最亮

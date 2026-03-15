@@ -46,8 +46,8 @@ public:
         : Actuator(name, "dual_color_led"),
           _whitePin(whitePin),
           _warmPin(warmPin),
-          _brightness(200),
-          _colorTemp(50),
+          _brightness(NIGHT_LED_BRIGHTNESS),
+          _colorTemp(NIGHT_LED_COLOR_TEMP),
           _isOn(false),
           _isAutoOn(false),
           _autoOnTime(0) {}
@@ -56,7 +56,7 @@ public:
      * @brief 初始化LED
      */
     bool begin() override {
-        // 设置引脚为输出模式
+        // 设置引脚为输出模式（ESP32 支持 analogWrite）
         pinMode(_whitePin, OUTPUT);
         pinMode(_warmPin, OUTPUT);
         
@@ -73,11 +73,10 @@ public:
      * 同时保持当前的色温比例
      */
     bool setValue(float value) override {
-        // 限制范围 0-255
         _brightness = constrain((int)value, 0, 255);
-        _isOn = (_brightness > 0);
-        updateLED();
-        
+        if (_isOn && !_isAutoOn) {
+            updateLED();
+        }
         return true;
     }
 
@@ -147,10 +146,11 @@ public:
      * 若已处于自动模式则重置倒计时。
      */
     void turnOnNightMode() {
+        // 先直接写 PWM 到夜间目标值（避免 LEDC 从 0 切换时的毛刺瞬态）
+        updateLED(NIGHT_LED_BRIGHTNESS, NIGHT_LED_COLOR_TEMP);
         _isOn       = true;
         _isAutoOn   = true;
         _autoOnTime = millis();
-        updateLED(NIGHT_LED_BRIGHTNESS, NIGHT_LED_COLOR_TEMP);
     }
 
     /**
@@ -168,6 +168,7 @@ public:
     void update() override {
         if (!_isAutoOn) return;
         if (millis() - _autoOnTime >= NIGHT_LED_AUTO_OFF_TIME) {
+            Serial.printf("\xf0\x9f\x94\xa5wufan LED auto-off triggered\n");
             turnOff();
             _isAutoOn = false;
         }
@@ -182,7 +183,7 @@ public:
     void turnOff() {
         _isOn = false;
         analogWrite(_whitePin, 0);
-        analogWrite(_warmPin, 0);
+        analogWrite(_warmPin,  0);
     }
 
     /**
@@ -220,31 +221,35 @@ public:
      * }
      */
     void getJSON(JsonObject& doc) override {
-        doc["name"] = _name;
-        doc["type"] = _type;
-        doc["state"] = _isOn ? "on" : "off";
-        doc["brightness"] = _brightness;
-        doc["colorTemp"] = _colorTemp;
+        // 自动模式下汇报夜间实际值，保持 web UI 与硬件一致
+        const uint8_t reportBrightness = _isAutoOn ? NIGHT_LED_BRIGHTNESS : _brightness;
+        const uint8_t reportColorTemp  = _isAutoOn ? NIGHT_LED_COLOR_TEMP  : _colorTemp;
+        const float   whiteRatio       = reportColorTemp / 100.0f;
+
+        doc["name"]         = _name;
+        doc["type"]         = _type;
+        doc["state"]        = _isOn ? "on" : "off";
+        doc["brightness"]   = reportBrightness;
+        doc["colorTemp"]    = reportColorTemp;
+        doc["autoMode"]     = _isAutoOn;
         
         // 色温描述
         String colorDesc;
-        if (_colorTemp < 20) {
+        if (reportColorTemp < 20) {
             colorDesc = "暖光";
-        } else if (_colorTemp < 40) {
+        } else if (reportColorTemp < 40) {
             colorDesc = "暖白";
-        } else if (_colorTemp < 60) {
+        } else if (reportColorTemp < 60) {
             colorDesc = "中性白";
-        } else if (_colorTemp < 80) {
+        } else if (reportColorTemp < 80) {
             colorDesc = "冷白";
         } else {
             colorDesc = "纯白光";
         }
         doc["colorTempDesc"] = colorDesc;
         
-        // 当前白光和暖光的实际PWM值
-        const float whiteRatio = _colorTemp / 100.0f;
-        doc["whiteValue"] = _isOn ? (uint8_t)(_brightness * whiteRatio)       : 0;
-        doc["warmValue"]  = _isOn ? (uint8_t)(_brightness * (1.0f - whiteRatio)) : 0;
+        doc["whiteValue"] = _isOn ? (uint8_t)(reportBrightness * whiteRatio)          : 0;
+        doc["warmValue"]  = _isOn ? (uint8_t)(reportBrightness * (1.0f - whiteRatio)) : 0;
     }
 
     /**
@@ -260,28 +265,31 @@ public:
     bool setFromJSON(JsonObject& doc) override {
         bool changed = false;
         
-        // 处理state
-        if (doc.containsKey("state")) {
+        // 先处理亮度（不改变开关状态，自动模式时不刷新 PWM）
+        if (doc["brightness"].is<int>()) {
+            _brightness = constrain((int)doc["brightness"], 0, 255);
+            if (_isOn && !_isAutoOn) updateLED();
+            changed = true;
+        }
+        
+        // 再处理色温（不改变开关状态，自动模式时不刷新 PWM）
+        if (doc["colorTemp"].is<int>()) {
+            _colorTemp = constrain((int)doc["colorTemp"], 0, 100);
+            if (_isOn && !_isAutoOn) updateLED();
+            changed = true;
+        }
+        
+        // 最后处理开关（自动模式时忽略 on 指令，避免覆盖夜间值）
+        if (doc["state"].is<String>()) {
             String state = doc["state"].as<String>();
-            if (state == "on") {
+            if (state == "on" && !_isAutoOn) {
                 turnOn();
                 changed = true;
             } else if (state == "off") {
                 turnOff();
+                _isAutoOn = false;   // 手动关灯退出自动模式
                 changed = true;
             }
-        }
-        
-        // 处理亮度
-        if (doc.containsKey("brightness")) {
-            setBrightness(doc["brightness"]);
-            changed = true;
-        }
-        
-        // 处理色温
-        if (doc.containsKey("colorTemp")) {
-            setColorTemperature(doc["colorTemp"]);
-            changed = true;
         }
         
         return changed;
@@ -311,8 +319,9 @@ private:
      */
     void updateLED(uint8_t brightness, uint8_t colorTemp) {
         const float whiteRatio = colorTemp / 100.0f;
-        analogWrite(_whitePin, (uint8_t)(brightness * whiteRatio));
+        // 先写暖光再写白光，避免两次 analogWrite 间隙出现白色闪烁
         analogWrite(_warmPin,  (uint8_t)(brightness * (1.0f - whiteRatio)));
+        analogWrite(_whitePin, (uint8_t)(brightness * whiteRatio));
     }
 };
 

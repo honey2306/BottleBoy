@@ -147,12 +147,6 @@ const char HTML_INDEX[] PROGMEM = R"rawliteral(
             color: #666;
         }
         
-        .sensor-status.disabled {
-            background: #ffeb3b;
-            color: #f57c00;
-            font-weight: bold;
-        }
-        
         .sensor-badge {
             display: inline-block;
             padding: 3px 10px;
@@ -300,18 +294,156 @@ const char HTML_INDEX[] PROGMEM = R"rawliteral(
             text-align: center;
         }
         
+        .tft-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            margin-bottom: 20px;
+        }
+        .tft-card h3 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 1.2em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .toggle-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin: 12px 0;
+        }
+        .toggle-label { color: #555; font-size: 0.95em; }
+        .toggle-switch {
+            position: relative;
+            width: 52px;
+            height: 28px;
+        }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .toggle-track {
+            position: absolute;
+            inset: 0;
+            background: #ccc;
+            border-radius: 28px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .toggle-track:before {
+            content: '';
+            position: absolute;
+            width: 22px; height: 22px;
+            left: 3px; top: 3px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.3s;
+        }
+        .toggle-switch input:checked + .toggle-track { background: #667eea; }
+        .toggle-switch input:checked + .toggle-track:before { transform: translateX(24px); }
+
+        /* ── RF 遥控卡片 ─────────────────────────────── */
+        .rf-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 20px;
+        }
+        .rf-card h3 {
+            color: #667eea;
+            margin-bottom: 16px;
+            font-size: 1.2em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .rf-learn-bar {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .rf-learn-bar input[type=text] {
+            flex: 1;
+            min-width: 120px;
+            padding: 8px 12px;
+            border: 1.5px solid #ddd;
+            border-radius: 8px;
+            font-size: 0.95em;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .rf-learn-bar input[type=text]:focus { border-color: #667eea; }
+        .rf-status {
+            margin: 10px 0 14px;
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 0.9em;
+            background: #f0f0f0;
+            color: #555;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-height: 36px;
+        }
+        .rf-status.waiting { background: #fff8e1; color: #e65100; }
+        .rf-status.success { background: #e8f5e9; color: #2e7d32; }
+        .rf-status.timeout { background: #ffebee; color: #c62828; }
+        .rf-device-list { list-style: none; padding: 0; margin: 0; }
+        .rf-device-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 12px;
+            border-radius: 10px;
+            background: #f7f8fc;
+            margin-bottom: 8px;
+            gap: 8px;
+        }
+        .rf-device-name {
+            font-weight: 600;
+            color: #333;
+            flex: 1;
+            font-size: 0.95em;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .rf-device-meta {
+            font-size: 0.78em;
+            color: #999;
+            white-space: nowrap;
+        }
+        .rf-device-btns { display: flex; gap: 6px; flex-shrink: 0; }
+        .btn-rf-send {
+            padding: 5px 14px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 7px;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: background 0.2s;
+        }
+        .btn-rf-send:hover { background: #5569d4; }
+        .btn-rf-del {
+            padding: 5px 10px;
+            background: #fff0f0;
+            color: #e53935;
+            border: 1px solid #ffcdd2;
+            border-radius: 7px;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: background 0.2s;
+        }
+        .btn-rf-del:hover { background: #ffebee; }
+
         @media (max-width: 768px) {
-            .header h1 {
-                font-size: 1.8em;
-            }
-            
-            .dashboard {
-                grid-template-columns: 1fr;
-            }
-            
-            .sensor-dual {
-                grid-template-columns: 1fr;
-            }
+            .header h1 { font-size: 1.8em; }
+            .dashboard { grid-template-columns: 1fr; }
+            .sensor-dual { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -338,6 +470,70 @@ const char HTML_INDEX[] PROGMEM = R"rawliteral(
             </div>
         </div>
         
+        <h2 class="section-title">🖥️ 屏幕</h2>
+        <div class="tft-card">
+            <h3>📺 TFT 显示屏</h3>
+
+            <div class="toggle-row">
+                <span class="toggle-label">屏幕开关</span>
+                <label class="toggle-switch">                    <input type="checkbox" id="tft-power" onchange="sendTft({state: this.checked ? 'on' : 'off'})">
+                    <span class="toggle-track"></span>
+                </label>
+            </div>
+
+            <div class="control-group">
+                <label class="control-label">
+                    背光亮度: <span id="tft-brightness-val">255</span>
+                </label>
+                <div class="slider-container">
+                    <input type="range" min="0" max="255" value="255"
+                           class="slider" id="tft-brightness"
+                           oninput="document.getElementById('tft-brightness-val').textContent=this.value"
+                           onchange="sendTft({brightness: parseInt(this.value)})">
+                    <span class="slider-value" id="tft-brightness-display">255</span>
+                </div>
+            </div>
+
+            <div class="toggle-row">
+                <span class="toggle-label">夜间模式 <small style="color:#999">(黑底琥珀橙)</small></span>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="tft-night" onchange="sendTft({nightMode: this.checked})">
+                    <span class="toggle-track"></span>
+                </label>
+            </div>
+
+            <div style="margin-top:12px">
+                <button class="btn btn-primary" style="font-size:0.85em;padding:8px 16px"
+                        onclick="sendTft({autoMode:true}); document.getElementById('tft-night').disabled=false">
+                    🔄 跟随光线自动
+                </button>
+            </div>
+        </div>
+
+        <h2 class="section-title">📡 433MHz 遥控</h2>
+        <div class="rf-card">
+            <h3>📡 RF 遥控学习器</h3>
+
+            <!-- 学习栏 -->
+            <div class="rf-learn-bar">
+                <input type="text" id="rf-name-input" placeholder="输入设备名称，如：灯1" maxlength="30">
+                <button class="btn btn-success" style="white-space:nowrap" onclick="rfStartLearn()">🎯 开始学习</button>
+                <button class="btn btn-danger"  style="white-space:nowrap" onclick="rfCancelLearn()">✖ 取消</button>
+            </div>
+
+            <!-- 学习状态提示 -->
+            <div class="rf-status" id="rf-status">
+                <span id="rf-status-icon">ℹ️</span>
+                <span id="rf-status-text">空闲 — 输入名称后点击"开始学习"，然后按遥控器按键</span>
+            </div>
+
+            <!-- 已存设备列表 -->
+            <div style="font-weight:600;color:#555;margin-bottom:8px;font-size:0.9em">已学设备</div>
+            <ul class="rf-device-list" id="rf-device-list">
+                <li style="color:#bbb;font-size:0.9em;padding:8px 0">暂无设备</li>
+            </ul>
+        </div>
+
         <div class="system-info">
             <h3>系统信息</h3>
             <div class="info-row">
@@ -381,6 +577,22 @@ const char HTML_INDEX[] PROGMEM = R"rawliteral(
             
             ws.onmessage = function(event) {
                 const data = JSON.parse(event.data);
+        // 接收到数据时同步 TFT 状态
+                if (data.tft) {
+                    const t = data.tft;
+                    const powerEl = document.getElementById('tft-power');
+                    const nightEl = document.getElementById('tft-night');
+                    const bEl = document.getElementById('tft-brightness');
+                    const bValEl = document.getElementById('tft-brightness-val');
+                    const bDispEl = document.getElementById('tft-brightness-display');
+                    if (powerEl) powerEl.checked = t.on;
+                    if (nightEl) nightEl.checked = t.nightMode;
+                    if (bEl && !tftBrightnessDragging) {
+                        bEl.value = t.brightness;
+                        if (bValEl) bValEl.textContent = t.brightness;
+                        if (bDispEl) bDispEl.textContent = t.brightness;
+                    }
+                }
                 if (data.sensors) updateSensors(data.sensors);
                 if (data.actuators) {
                     data.actuators.forEach(a => { actuatorStates[a.name] = a.state; });
@@ -405,6 +617,8 @@ const char HTML_INDEX[] PROGMEM = R"rawliteral(
                     document.getElementById('chipModel').textContent = data.chipModel;
                     document.getElementById('cpuFreq').textContent = data.cpuFreq + ' MHz';
                 }
+                // RF 状态同步
+                if (data.rf) updateRF(data.rf);
             };
             
             ws.onerror = function(error) {
@@ -449,22 +663,12 @@ const char HTML_INDEX[] PROGMEM = R"rawliteral(
                     }
                     else if (sensor.type === 'pir') {
                         const isDetected = sensor.detected || false;
-                        const isDisabled = sensor.disabled || false;
-                        const disabledReason = sensor.disabledReason || '';
-                        
-                        let statusHtml = '';
-                        if (isDisabled) {
-                            statusHtml = `<div class="sensor-status disabled">⊗ 已禁用: ${disabledReason}</div>`;
-                        } else {
-                            statusHtml = `<div class="sensor-status ${isDetected ? 'active' : 'inactive'}">
-                                ${isDetected ? '✓ 检测到人' : '○ 无人'}
-                            </div>`;
-                        }
-                        
                         card.innerHTML = `
                             <h3>👤 ${sensor.name}</h3>
-                            <div class="sensor-value">${isDisabled ? '禁用中' : (sensor.state || '无人')}</div>
-                            ${statusHtml}
+                            <div class="sensor-value">${sensor.state || '无人'}</div>
+                            <div class="sensor-status ${isDetected ? 'active' : 'inactive'}">
+                                ${isDetected ? '✓ 检测到人' : '○ 无人'}
+                            </div>
                         `;
                     }
                     else if (sensor.type === 'light') {
@@ -709,6 +913,118 @@ const char HTML_INDEX[] PROGMEM = R"rawliteral(
             const newState = currentState === 'on' ? 'off' : 'on';
             sendControl({ cmd: 'control', name: name, state: newState });
         }
+        
+        function sendTft(payload) {
+            sendControl(Object.assign({ cmd: 'tft' }, payload));
+        }
+
+        // ──────────────────────────────────────────────
+        // RF 遥控相关函数
+        // ──────────────────────────────────────────────
+
+        /**
+         * 开始学习：从输入框取名称，发送 rfLearn 命令
+         */
+        function rfStartLearn() {
+            const nameEl = document.getElementById('rf-name-input');
+            const name = nameEl ? nameEl.value.trim() : '';
+            if (!name) {
+                rfSetStatus('error', '⚠️', '请先输入设备名称');
+                return;
+            }
+            sendControl({ cmd: 'rfLearn', name });
+            rfSetStatus('waiting', '📡', `正在等待 "${name}" 的信号，请按遥控器按键…`);
+        }
+
+        /**
+         * 取消学习
+         */
+        function rfCancelLearn() {
+            sendControl({ cmd: 'rfCancel' });
+            rfSetStatus('idle', 'ℹ️', '学习已取消');
+        }
+
+        /**
+         * 发射 RF 信号
+         * @param {string} name 设备名称
+         */
+        function rfSend(name) {
+            sendControl({ cmd: 'rfSend', name });
+        }
+
+        /**
+         * 删除设备
+         * @param {string} name 设备名称
+         */
+        function rfDelete(name) {
+            if (!confirm(`确认删除设备 "${name}"？`)) return;
+            sendControl({ cmd: 'rfDelete', name });
+        }
+
+        /**
+         * 设置学习状态栏样式和文字
+         * @param {'idle'|'waiting'|'success'|'timeout'|'error'} state
+         * @param {string} icon
+         * @param {string} text
+         */
+        function rfSetStatus(state, icon, text) {
+            const bar  = document.getElementById('rf-status');
+            const ico  = document.getElementById('rf-status-icon');
+            const txt  = document.getElementById('rf-status-text');
+            if (!bar) return;
+            bar.className = 'rf-status ' + (state === 'error' ? 'timeout' : state);
+            if (ico) ico.textContent = icon;
+            if (txt) txt.textContent = text;
+        }
+
+        /**
+         * 根据后端推送的 rf 对象更新 UI
+         * @param {{ state:string, name:string, devices:Array }} rf
+         */
+        function updateRF(rf) {
+            // 更新状态栏
+            if (rf.state === 'waiting') {
+                rfSetStatus('waiting', '📡', `正在等待 "${rf.name}" 的信号，请按遥控器按键…`);
+            } else if (rf.state === 'success') {
+                rfSetStatus('success', '✅', `学习成功：${rf.name}`);
+                const nameEl = document.getElementById('rf-name-input');
+                if (nameEl) nameEl.value = '';
+            } else if (rf.state === 'timeout') {
+                rfSetStatus('timeout', '⏱️', `学习超时：等待 "${rf.name}" 信号超时，请重试`);
+            } else {
+                rfSetStatus('idle', 'ℹ️', '空闲 — 输入名称后点击"开始学习"，然后按遥控器按键');
+            }
+
+            // 更新设备列表
+            if (!rf.devices) return;
+            const list = document.getElementById('rf-device-list');
+            if (!list) return;
+            if (rf.devices.length === 0) {
+                list.innerHTML = '<li style="color:#bbb;font-size:0.9em;padding:8px 0">暂无设备</li>';
+                return;
+            }
+            list.innerHTML = rf.devices.map(dev => `
+                <li class="rf-device-item">
+                    <span class="rf-device-name">${dev.name}</span>
+                    <span class="rf-device-meta">协议${dev.protocol} · ${dev.bitLength}bit</span>
+                    <div class="rf-device-btns">
+                        <button class="btn-rf-send" onclick="rfSend('${dev.name.replace(/'/g, "\\'")}')">▶ 发射</button>
+                        <button class="btn-rf-del"  onclick="rfDelete('${dev.name.replace(/'/g, "\\'")}')">🗑</button>
+                    </div>
+                </li>
+            `).join('');
+        }
+        
+        let tftBrightnessDragging = false;
+        document.addEventListener('DOMContentLoaded', () => {
+            const bSlider = document.getElementById('tft-brightness');
+            if (bSlider) {
+                bSlider.addEventListener('mousedown', () => { tftBrightnessDragging = true; });
+                bSlider.addEventListener('touchstart', () => { tftBrightnessDragging = true; });
+                bSlider.addEventListener('mouseup', () => { tftBrightnessDragging = false; });
+                bSlider.addEventListener('touchend', () => { tftBrightnessDragging = false; });
+            }
+        });
         
         function refreshData() {
             sendControl({ cmd: 'getData' });

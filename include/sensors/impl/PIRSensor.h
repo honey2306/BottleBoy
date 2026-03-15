@@ -52,20 +52,19 @@ public:
         
         // 检测到人（GPIO HIGH）
         if (currentGPIO == HIGH) {
-            _lastTriggerTime = now;  // 更新最后触发时间
+            _lastTriggerTime = now;
             
-            // 从"无人"切换到"有人"
             if (!_detected) {
                 _detected = true;
-                notifyValueChanged(1.0);  // 触发回调
+                Serial.printf("\xf0\x9f\x94\xa5wufan PIR DETECTED (pin=%d)\n", _pin);
+                notifyValueChanged(1.0);
             }
         } 
-        // 没检测到人（GPIO LOW）
         else {
-            // 检查是否超过保持时间
             if (_detected && (now - _lastTriggerTime > _holdTime)) {
                 _detected = false;
-                notifyValueChanged(0.0);  // 触发回调（关灯）
+                Serial.printf("\xf0\x9f\x94\xa5wufan PIR CLEARED (held %lums)\n", now - _lastTriggerTime);
+                notifyValueChanged(0.0);
             }
         }
         

@@ -10,6 +10,8 @@
 #include <ArduinoJson.h>
 #include "sensors/base/SensorManager.h"
 #include "actuators/base/ActuatorManager.h"
+#include "tft/TFTDisplay.h"
+#include "remote/RFManager.h"
 #include "core/Config.h"
 
 /**
@@ -20,10 +22,13 @@ class WebServerManager {
 public:
     /**
      * @brief 构造函数
-     * @param sensorManager 传感器管理器引用
+     * @param sensorManager   传感器管理器引用
      * @param actuatorManager 执行器管理器引用
+     * @param tftDisplay      TFT 显示屏引用
+     * @param rfManager       RF 管理器引用
      */
-    WebServerManager(SensorManager& sensorManager, ActuatorManager& actuatorManager);
+    WebServerManager(SensorManager& sensorManager, ActuatorManager& actuatorManager,
+                     TFTDisplay& tftDisplay, RFManager& rfManager);
 
     /**
      * @brief 析构函数
@@ -47,10 +52,12 @@ public:
     void broadcastData();
 
 private:
-    AsyncWebServer _server;
-    AsyncWebSocket _ws;
-    SensorManager& _sensorManager;
-    ActuatorManager& _actuatorManager;
+    AsyncWebServer    _server;
+    AsyncWebSocket    _ws;
+    SensorManager&    _sensorManager;
+    ActuatorManager&  _actuatorManager;
+    TFTDisplay&       _tftDisplay;
+    RFManager&        _rfManager;
 
     /**
      * @brief 设置路由

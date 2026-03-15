@@ -12,6 +12,8 @@
 #include "network/WebServer.h"
 #include "sensors/base/SensorManager.h"
 #include "actuators/base/ActuatorManager.h"
+#include "tft/TFTDisplay.h"
+#include "remote/RFManager.h"
 
 /**
  * @namespace NetworkInit
@@ -28,15 +30,15 @@ namespace NetworkInit {
     void initWiFi(WiFiManager& wifiManager);
     
     /**
-     * @brief 初始化Web服务器
-     * 
-     * 创建并启动Web服务器
-     * 
-     * @param sensorManager 传感器管理器引用
+     * @brief 初始化 Web 服务器
+     * @param sensorManager   传感器管理器引用
      * @param actuatorManager 执行器管理器引用
-     * @return Web服务器指针
+     * @param tftDisplay      TFT 显示屏引用
+     * @param rfManager       RF 管理器引用
+     * @return Web 服务器指针
      */
-    WebServerManager* initWebServer(SensorManager& sensorManager, ActuatorManager& actuatorManager);
+    WebServerManager* initWebServer(SensorManager& sensorManager, ActuatorManager& actuatorManager,
+                                    TFTDisplay& tftDisplay, RFManager& rfManager);
 }
 
 #endif // NETWORK_INIT_H

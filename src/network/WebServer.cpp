@@ -12,6 +12,8 @@
 #include "web/WebPages.h"
 #include "sensors/impl/LightSensor.h"
 #include "sensors/impl/PIRSensor.h"
+#include "tft/TFTDisplay.h"
+#include "remote/RFManager.h"
 
 /**
  * @brief 构造函数
@@ -24,11 +26,14 @@
  * @param sensorManager 传感器管理器引用
  * @param actuatorManager 执行器管理器引用
  */
-WebServerManager::WebServerManager(SensorManager& sensorManager, ActuatorManager& actuatorManager)
-    : _server(WEB_SERVER_PORT),          // 创建HTTP服务器，监听80端口
-      _ws(WEBSOCKET_PATH),                // 创建WebSocket服务器，路径为/ws
-      _sensorManager(sensorManager),      // 保存传感器管理器的引用
-      _actuatorManager(actuatorManager) { // 保存执行器管理器的引用
+WebServerManager::WebServerManager(SensorManager& sensorManager, ActuatorManager& actuatorManager,
+                                   TFTDisplay& tftDisplay, RFManager& rfManager)
+    : _server(WEB_SERVER_PORT),
+      _ws(WEBSOCKET_PATH),
+      _sensorManager(sensorManager),
+      _actuatorManager(actuatorManager),
+      _tftDisplay(tftDisplay),
+      _rfManager(rfManager) {
 }
 
 /**
@@ -184,21 +189,69 @@ void WebServerManager::onWebSocketEvent(AsyncWebSocket* server, AsyncWebSocketCl
                 AwsFrameInfo* info = (AwsFrameInfo*)arg;
                 if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
                     // 解析JSON命令
+                    data[len] = 0;  // 确保字符串终止
+
                     JsonDocument doc;
                     DeserializationError error = deserializeJson(doc, (const char*)data, len);
-                    
-                    if (!error && doc.containsKey("cmd")) {
+
+                    if (!error && doc["cmd"].is<String>()) {
                         String cmd = doc["cmd"].as<String>();
-                        
-                        if (cmd == "control" && doc.containsKey("name")) {
+
+                        if (cmd == "control" && doc["name"].is<String>()) {
                             String name = doc["name"].as<String>();
                             Actuator* actuator = _actuatorManager.getActuator(name);
-                            
+
                             if (actuator) {
                                 JsonObject obj = doc.as<JsonObject>();
                                 actuator->setFromJSON(obj);
                                 broadcastData();
                             }
+                        }
+                        else if (cmd == "tft") {
+                            // autoMode: 解除手动覆盖，恢复光敏自动
+                            if (!doc["autoMode"].isNull() && doc["autoMode"].as<bool>()) {
+                                _tftDisplay.setNightModeAutomatic();
+                            }
+                            if (!doc["state"].isNull()) {
+                                bool on = doc["state"].as<String>() == "on";
+                                _tftDisplay.setOn(on);
+                            }
+                            if (!doc["brightness"].isNull()) {
+                                int bri = doc["brightness"].as<int>();
+                                _tftDisplay.setBrightness((uint8_t)bri);
+                            }
+                            if (!doc["nightMode"].isNull()) {
+                                bool night = doc["nightMode"].as<bool>();
+                                _tftDisplay.setNightMode(night);
+                            }
+                            // 广播最新状态
+                            broadcastData();
+                        }
+                        // ─── RF 相关命令 ───
+                        else if (cmd == "rfLearn") {
+                            // 开始学习：{"cmd":"rfLearn", "name":"设备名"}
+                            if (doc["name"].is<String>()) {
+                                _rfManager.startLearn(doc["name"].as<String>());
+                            }
+                            broadcastData();
+                        }
+                        else if (cmd == "rfCancel") {
+                            // 取消学习：{"cmd":"rfCancel"}
+                            _rfManager.cancelLearn();
+                            broadcastData();
+                        }
+                        else if (cmd == "rfSend") {
+                            // 发射：{"cmd":"rfSend", "name":"设备名"}
+                            if (doc["name"].is<String>()) {
+                                _rfManager.transmit(doc["name"].as<String>());
+                            }
+                        }
+                        else if (cmd == "rfDelete") {
+                            // 删除设备：{"cmd":"rfDelete", "name":"设备名"}
+                            if (doc["name"].is<String>()) {
+                                _rfManager.removeDevice(doc["name"].as<String>());
+                            }
+                            broadcastData();
                         }
                         else if (cmd == "getData") {
                             client->text(getAllDataJSON());
@@ -264,6 +317,12 @@ String WebServerManager::getSystemInfoJSON() {
     root["chipModel"] = ESP.getChipModel();
     root["cpuFreq"] = ESP.getCpuFreqMHz();
     
+    // RF 状态
+    JsonObject rf = root["rf"].to<JsonObject>();
+    _rfManager.getLearnStatusJSON(rf);
+    JsonArray rfDevices = rf["devices"].to<JsonArray>();
+    _rfManager.getDevicesJSON(rfDevices);
+
     String output;
     serializeJson(root, output);
     return output;
@@ -330,6 +389,12 @@ String WebServerManager::getAllDataJSON() {
     _sensorManager.getAllJSON(root);
     _actuatorManager.getAllJSON(root);
 
+    // TFT 屏幕状态
+    JsonObject tft = root["tft"].to<JsonObject>();
+    tft["on"]         = _tftDisplay.isOn();
+    tft["brightness"] = _tftDisplay.getBrightness();
+    tft["nightMode"]  = _tftDisplay.isNightMode();
+
     // 自动化规则状态（使用语义接口，不依赖原始 getValue()）
     LightSensor* lightSensor = static_cast<LightSensor*>(_sensorManager.getSensor("Light"));
     PIRSensor*   pirSensor   = static_cast<PIRSensor*>(_sensorManager.getSensor("PIR"));
@@ -347,6 +412,12 @@ String WebServerManager::getAllDataJSON() {
     } else {
         automation["action"] = "白天 → 自动关灯";
     }
+
+    // RF 状态和设备列表
+    JsonObject rf = root["rf"].to<JsonObject>();
+    _rfManager.getLearnStatusJSON(rf);
+    JsonArray rfDevices = rf["devices"].to<JsonArray>();
+    _rfManager.getDevicesJSON(rfDevices);
 
     String output;
     serializeJson(root, output);

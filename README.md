@@ -18,32 +18,45 @@ BottleBoy是一个模块化的IoT框架，运行在ESP32-S3平台上，提供传
 ## 🛠️ 硬件支持
 
 ### 开发板
+
 - ESP32-S3 (4D Systems ESP32-S3 Gen4 R8N16)
 
 ### 传感器
+
 - **DHT22** - 温湿度传感器
 - **PIR** - 人体红外感应传感器
 - **Light Sensor** - 光敏传感器（支持白天/晚上判断）
 
 ### 执行器
+
 - **DualColorLED** - 双色调温LED（白光+暖光）
 - **LED** - 普通LED（可扩展）
 
 ## 📋 引脚配置
 
-| 设备 | 引脚 | 说明 |
-|------|------|------|
-| DHT22 | GPIO4 | 温湿度传感器数据线 |
-| PIR | GPIO5 | 人体感应传感器输出 |
-| Light Sensor | GPIO34 | 光敏传感器模拟输入（ADC1） |
-| DualLED 白光 | GPIO2 | PWM控制白光亮度 |
-| DualLED 暖光 | GPIO15 | PWM控制暖光亮度 |
+| 模块          | 设备          | 引脚   | 说明                              |
+| ------------- | ------------- | ------ | --------------------------------- |
+| **传感器**    | DHT22         | GPIO4  | 温湿度传感器数据线                |
+|               | PIR           | GPIO5  | 人体感应传感器信号输出            |
+|               | 光敏传感器    | GPIO34 | 模拟输入（ADC1_CH6，仅输入引脚）  |
+| **执行器**    | 双色LED 白光  | GPIO16 | PWM 控制白光亮度                  |
+|               | 双色LED 暖光  | GPIO17 | PWM 控制暖光亮度                  |
+| **TFT 屏幕**  | CS            | GPIO15 | SPI 片选                          |
+|               | DC            | GPIO2  | 数据/命令选择                     |
+|               | RST           | GPIO22 | 复位                              |
+|               | MOSI          | GPIO23 | SPI 数据输出                      |
+|               | SCK           | GPIO18 | SPI 时钟                          |
+|               | LED（背光）   | GPIO21 | 背光 PWM 控制（支持开关/调光）    |
+| **433MHz RF** | 接收模块 DATA | GPIO13 | 接收数据引脚                      |
+|               | 发射模块 DATA | GPIO25 | 发射数据引脚                      |
+| **按钮**      | 自锁按钮      | GPIO26 | 手动/自动模式切换（另一端接 GND） |
 
 ## 🚀 快速开始
 
 ### 1. 环境准备
 
 #### 安装PlatformIO
+
 ```bash
 # 通过VSCode安装PlatformIO扩展
 # 或使用命令行安装
@@ -51,6 +64,7 @@ pip install platformio
 ```
 
 ### 2. 克隆项目
+
 ```bash
 git clone https://github.com/honey2306/BottleBoy.git
 cd BottleBoy
@@ -59,12 +73,14 @@ cd BottleBoy
 ### 3. 配置WiFi
 
 编辑 `include/core/Config.h`，修改WiFi配置：
+
 ```cpp
 #define WIFI_SSID "你的WiFi名称"
 #define WIFI_PASSWORD "你的WiFi密码"
 ```
 
 ### 4. 编译上传
+
 ```bash
 # 编译
 pio run
@@ -79,6 +95,7 @@ pio device monitor
 ### 5. 访问Web界面
 
 设备连接WiFi后，串口会显示IP地址：
+
 ```
 WiFi connected! IP: 192.168.1.100
 ```
@@ -111,21 +128,25 @@ BottleBoy/
 ### REST API
 
 #### 获取所有传感器数据
+
 ```http
 GET /api/sensors
 ```
 
 #### 获取单个传感器数据
+
 ```http
 GET /api/sensors/{name}
 ```
 
 #### 获取所有执行器状态
+
 ```http
 GET /api/actuators
 ```
 
 #### 控制执行器
+
 ```http
 POST /api/actuators/{name}
 Content-Type: application/json
@@ -138,6 +159,7 @@ Content-Type: application/json
 ```
 
 #### 系统信息
+
 ```http
 GET /api/system
 ```
@@ -153,6 +175,7 @@ GET /api/system
 ### 添加传感器
 
 1. 在 `include/sensors/impl/` 创建传感器类：
+
 ```cpp
 class MySensor : public Sensor {
     // 实现 begin(), read(), getValue(), getJSON()
@@ -160,6 +183,7 @@ class MySensor : public Sensor {
 ```
 
 2. 在 `src/init/DeviceRegistry.cpp` 注册：
+
 ```cpp
 sensorManager.addSensor(new MySensor("MySensor", PIN));
 ```
@@ -167,6 +191,7 @@ sensorManager.addSensor(new MySensor("MySensor", PIN));
 ### 添加执行器
 
 1. 在 `include/actuators/impl/` 创建执行器类：
+
 ```cpp
 class MyActuator : public Actuator {
     // 实现 begin(), setValue(), getValue(), getJSON(), setFromJSON()
@@ -174,6 +199,7 @@ class MyActuator : public Actuator {
 ```
 
 2. 在 `src/init/DeviceRegistry.cpp` 注册：
+
 ```cpp
 actuatorManager.addActuator(new MyActuator("MyActuator", PIN));
 ```
@@ -187,7 +213,7 @@ void AutomationRules::processRules() {
     // 示例：晚上自动开灯
     LightSensor* light = (LightSensor*)_sensorManager.getSensor("Light");
     DualColorLED* led = (DualColorLED*)_actuatorManager.getActuator("DualLED");
-    
+
     if (light && led) {
         if (light->isNightTime()) {
             led->setBrightness(200);
@@ -213,11 +239,13 @@ void AutomationRules::processRules() {
 ## 🎨 Web界面预览
 
 ### 传感器监控
+
 - 实时显示温度、湿度
 - 人体感应状态
 - 光线强度和昼夜判断
 
 ### 执行器控制
+
 - 亮度滑块（0-255）
 - 色温调节（暖光🔥 ↔️ 冷光❄️）
 - 开关控制
@@ -225,6 +253,7 @@ void AutomationRules::processRules() {
 ## 🔐 配置说明
 
 编辑 `include/core/Config.h` 可修改：
+
 - WiFi SSID和密码
 - AP模式配置
 - Web服务器端口
@@ -234,7 +263,7 @@ void AutomationRules::processRules() {
 ## 📝 待办事项
 
 - [ ] 添加MQTT支持
-- [ ] 添加OTA更新功能
+- [x] 添加OTA更新功能
 - [ ] 支持更多传感器类型
 - [ ] 添加数据记录和图表
 - [ ] 移动App支持

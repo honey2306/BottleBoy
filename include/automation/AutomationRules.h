@@ -18,6 +18,7 @@
 #include "actuators/impl/DualColorLED.h"
 #include "sensors/impl/PIRSensor.h"
 #include "sensors/impl/LightSensor.h"
+#include "sensors/impl/LatchButtonSensor.h"
 
 /**
  * @class AutomationRules
@@ -53,9 +54,13 @@ private:
     ActuatorManager& _actuatorManager;   ///< 执行器管理器引用
 
     // ========== 缓存的设备指针（registerCallbacks 时赋值）==========
-    PIRSensor*    _pirSensor    = nullptr;  ///< PIR 传感器
-    LightSensor*  _lightSensor  = nullptr;  ///< 光敏传感器
-    DualColorLED* _ledActuator  = nullptr;  ///< 双色 LED 执行器
+    PIRSensor*           _pirSensor    = nullptr;  ///< PIR 传感器
+    LightSensor*         _lightSensor  = nullptr;  ///< 光敏传感器
+    DualColorLED*        _ledActuator  = nullptr;  ///< 双色 LED 执行器
+    LatchButtonSensor*   _latchBtn     = nullptr;  ///< 自锁按钮
+
+    unsigned long        _ledOffTime   = 0;        ///< 自动关灯时间戳（冷却计时起点）
+    bool                 _wasAutoOn    = false;     ///< 上一帧 isAutoOn 状态（用于检测关灯沿）
 
 
 
@@ -65,6 +70,11 @@ private:
      * @brief 规则1: PIR 状态变化 → 夜间联动 LED
      */
     void onPIRChanged(Sensor* sensor, float newValue, float oldValue);
+
+    /**
+     * @brief 规则2: 自锁按钮状态变化 → 切换手动/自动模式
+     */
+    void onLatchButtonChanged(Sensor* sensor, float newValue, float oldValue);
 
     // ========== 持续状态规则处理函数 ==========
 
